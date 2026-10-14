@@ -4,7 +4,7 @@ python-multipart
 geopandas
 shapely
 pytesseract
-google-generativeai
+google-genai>=2.30
 Pillow
 torch
 diff-plonk

@@ -11,9 +11,9 @@ Erken aşama bir kavram kanıtı (PoC), bitmiş bir araç değil. Bu repoda Fast
 `POST /analyze` bir görsel alıp dört adımı sırayla çalıştırıyor:
 
 1. **OCR:** Tesseract görseldeki yazıları okuyor.
-2. **Gemini:** Görsel, olası ülkeleri ve gerekçelerini JSON olarak isteyen bir prompt ile Gemini'ye gidiyor. `GEMINI_API_KEY` tanımlı değilse bu adım atlanıyor.
+2. **Gemini:** Görsel, fotoğrafın hangi ülkelerde çekilmiş olabileceğini soran bir prompt ile Gemini'ye gidiyor (varsayılan model `gemini-3.8-flash`). Cevap yapılandırılmış JSON olarak dönüyor: her aday için İngilizce ad, ISO 3166-1 alpha-3 kodu ve kısa bir gerekçe. `GEMINI_API_KEY` tanımlı değilse bu adım atlanıyor. Çağrı başarısız olursa istek Gemini olmadan devam ediyor ve hata `cognitive_error` alanında dönüyor.
 3. **PLONK:** `nicolas-dufour/PLONK_YFCC` modeli görselden enlem ve boylam tahmin ediyor. GPU varsa onu kullanıyor; VRAM boşalsın diye model her istekten sonra bellekten atılıyor.
-4. **Kesişim:** GeoPandas ve Shapely ile PLONK'un verdiği noktanın Gemini'nin önerdiği ülkelerden birinin içinde kalıp kalmadığına bakılıyor (Natural Earth 1:110m sınırları). İçindeyse güven `high`, değilse `low`.
+4. **Kesişim:** GeoPandas ve Shapely ile PLONK'un verdiği noktanın Gemini'nin önerdiği ülkelerden birinin içinde kalıp kalmadığına bakılıyor. Ülkeler, Natural Earth 1:110m sınırlarıyla ISO kodu ya da adı üzerinden eşleştiriliyor. Nokta bunlardan birinin içindeyse güven `high`, değilse `low`.
 
 Yanıtta her adımın ham çıktısı ve birleşik sonuç birlikte dönüyor:
 
@@ -23,6 +23,7 @@ Yanıtta her adımın ham çıktısı ve birleşik sonuç birlikte dönüyor:
   "filename": "photo.jpg",
   "ocr_extracted_text": "...",
   "cognitive_analysis": "...",
+  "cognitive_error": null,
   "plonk_spatial_distribution": { "type": "Feature", "geometry": { "type": "Point", "coordinates": [2.35, 48.85] } },
   "results": {
     "latitude": 48.85,
@@ -43,7 +44,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Sunucu 8000 portunda açılıyor; FastAPI'nin etkileşimli dokümanı `http://localhost:8000/docs` adresinde. Gemini adımını açmak için başlatmadan önce `GEMINI_API_KEY` ortam değişkenini tanımla.
+Sunucu 8000 portunda açılıyor; FastAPI'nin etkileşimli dokümanı `http://localhost:8000/docs` adresinde. Gemini adımını açmak için başlatmadan önce `GEMINI_API_KEY` ortam değişkenini tanımla. Başka bir model kullanmak istersen `GEMINI_MODEL` ile değiştirebilirsin.
 
 İnternet bağlantısı gerekiyor: PLONK ağırlıkları ilk istekte Hugging Face'ten iniyor, ülke sınırları da her istekte yeniden indiriliyor.
 
@@ -57,14 +58,12 @@ flutter pub get
 flutter run
 ```
 
-Backend adresi `app/lib/main.dart` içinde sabit yazılı: web ve masaüstünde `localhost:8000`, Android emülatöründe `10.0.2.2:8000`.
+Backend adresi `app/lib/main.dart` içinde sabit yazılı: web ve masaüstünde `localhost:8000`, Android emülatöründe `10.0.2.2:8000`. Backend her kaynaktan gelen isteği kabul ettiği için web derlemesi (`flutter run -d chrome`) de ona ulaşabiliyor.
 
 ## Bilinen sorunlar
 
-- `ai_agents/cognitive_agent.py` hâlâ `gemini-1.5-flash` modelini çağırıyor ve Google bu modeli kullanımdan kaldırdı. Gemini adımının çalışması için güncel bir modele geçirilmesi gerekiyor.
-- Gemini'nin cevabı `json.loads` ile okunuyor. Model cevabı Markdown kod bloğu içinde dönerse okuma başarısız oluyor, aday ülke kullanılmıyor ve güven `low` çıkıyor.
-- Backend'de CORS açık değil; bu yüzden istemci tarayıcıdan (`flutter run -d chrome`) backend'e ulaşamıyor. Masaüstü ve mobil derlemeler bundan etkilenmiyor.
 - PLONK her istekte yeniden yükleniyor ve sınır dosyası her seferinde tekrar iniyor; bu yüzden her istek yavaş.
+- 1:110m sınırlar kaba. Kıyıya ya da sınıra yakın bir nokta doğru ülkenin hemen dışına düşebiliyor; çok küçük ülkeler ise veri setinde hiç yok.
 - Öneride EXIF okuma, gölge ve güneş açısı analizi ile React/Leaflet web istemcisi de planlanmıştı. Bunların hiçbiri yapılmadı.
 
 ## Klasör yapısı
